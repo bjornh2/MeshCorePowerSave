@@ -14,7 +14,16 @@ WRAPPER_CLASS radio_driver(radio, board);
 
 ESP32RTCClock fallback_clock;
 AutoDiscoverRTCClock rtc_clock(fallback_clock);
-SensorManager sensors;
+#if defined(ENV_INCLUDE_BME280) || defined(ENV_INCLUDE_BMP280) || defined(ENV_INCLUDE_INA3221)
+  EnvironmentSensorManager sensors;
+#else
+  SensorManager sensors;
+#endif
+
+#ifdef DISPLAY_CLASS
+  DISPLAY_CLASS display;
+  MomentaryButton user_btn(PIN_USER_BTN, 1000, true, true);  // active low, internal pull-up
+#endif
 
 bool radio_init() {
   fallback_clock.begin();

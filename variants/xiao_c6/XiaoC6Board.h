@@ -8,6 +8,10 @@ public:
   void begin() {
     ESP32Board::begin();
 
+#ifdef PIN_USER_BTN
+    pinMode(PIN_USER_BTN, INPUT_PULLUP);
+#endif
+
 #ifdef USE_XIAO_ESP32C6_EXTERNAL_ANTENNA
 // Connect an external antenna to your XIAO ESP32C6 otherwise, it may be damaged!
     pinMode(3, OUTPUT);
