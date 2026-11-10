@@ -365,6 +365,8 @@ static uint8_t init_ina3221(TwoWire* wire, uint8_t addr) {
   for (int i = 0; i < TELEM_INA3221_NUM_CHANNELS; i++) {
     INA3221.setShuntResistance(i, TELEM_INA3221_SHUNT_VALUE);
   }
+  INA3221.setAveragingMode(INA3221_AVG_4_SAMPLES);
+  INA3221.setMode(INA3221_MODE_POWER_DOWN);
   // Each enabled hardware channel becomes its own telemetry channel.
   uint8_t enabled = 0;
   for (int i = 0; i < TELEM_INA3221_NUM_CHANNELS; i++) {
@@ -373,6 +375,17 @@ static uint8_t init_ina3221(TwoWire* wire, uint8_t addr) {
   return enabled > 0 ? enabled : 1;
 }
 static void query_ina3221(uint8_t ch, uint8_t sub_ch, CayenneLPP& lpp) {
+  if (sub_ch == 0) {
+    // Clear any stale conversion-ready flag, trigger a single-shot 4x averaged
+    // conversion across all enabled channels, and wait for completion (~27 ms).
+    // The INA3221 automatically returns to power-down mode once finished.
+    (void)INA3221.getFlags();
+    INA3221.setMode(INA3221_MODE_SHUNT_BUS_TRIG);
+    unsigned long start = millis();
+    while (!(INA3221.getFlags() & INA3221_CONV_READY) && (millis() - start < 50)) {
+      delay(2);
+    }
+  }
   // sub_ch is the index of the nth enabled hardware channel.
   uint8_t seen = 0;
   for (int i = 0; i < TELEM_INA3221_NUM_CHANNELS; i++) {
