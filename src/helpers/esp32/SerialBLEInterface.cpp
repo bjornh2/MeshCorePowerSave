@@ -1,5 +1,7 @@
 #include "SerialBLEInterface.h"
 #include "esp_mac.h"
+#include <esp_sleep.h>
+#include <esp_gatts_api.h>
 
 // See the following for generating UUIDs:
 // https://www.uuidgenerator.net/
@@ -141,8 +143,15 @@ void SerialBLEInterface::enable() {
   _isEnabled = true;
   clearBuffers();
 
+  esp_sleep_pd_config(ESP_PD_DOMAIN_XTAL, ESP_PD_OPTION_ON);
+
   // Start the service
-  pService->start();
+  if (!_serviceStarted) {
+    pService->start();
+    _serviceStarted = true;
+  } else {
+    esp_ble_gatts_start_service(pService->getHandle());
+  }
 
   // Start advertising
 
@@ -154,15 +163,22 @@ void SerialBLEInterface::enable() {
 }
 
 void SerialBLEInterface::disable() {
+  if (!_isEnabled) return;
   _isEnabled = false;
 
   BLE_DEBUG_PRINTLN("SerialBLEInterface::disable");
 
   pServer->getAdvertising()->stop();
-  pServer->disconnect(last_conn_id);
-  pService->stop();
+  if (deviceConnected) {
+    pServer->disconnect(last_conn_id);
+  }
+  if (_serviceStarted) {
+    pService->stop();
+  }
   oldDeviceConnected = deviceConnected = false;
   adv_restart_time = 0;
+
+  esp_sleep_pd_config(ESP_PD_DOMAIN_XTAL, ESP_PD_OPTION_AUTO);
 }
 
 size_t SerialBLEInterface::writeFrame(const uint8_t src[], size_t len) {

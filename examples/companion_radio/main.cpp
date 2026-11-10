@@ -296,6 +296,10 @@ void setup() {
 #endif
 }
 
+#ifndef POWERSAVING_FIRSTSLEEP_SECS
+  #define POWERSAVING_FIRSTSLEEP_SECS 120  // Do not sleep in first 120s since boot so user has time to use CLI / connect BLE
+#endif
+
 void loop() {
   the_mesh.loop();
   interface_manager.loop();
@@ -313,7 +317,49 @@ void loop() {
 #if defined(NRF52_PLATFORM)
     board.sleep(0); // nrf ignores seconds param, sleeps whenever possible
 #elif defined(ESP32_PLATFORM)
-  #if defined(BLE_PIN_CODE)
+  #if defined(BLE_PIN_CODE) && defined(POWERSAVING_BLE_SLEEP) && defined(PIN_USER_BTN) && (PIN_USER_BTN >= 0)
+      static unsigned long ble_keep_awake_until = POWERSAVING_FIRSTSLEEP_SECS * 1000UL;
+      static bool was_ble_enabled = true;
+
+      if (bluetooth_interface.isEnabled()) {
+        if (!was_ble_enabled || bluetooth_interface.isConnected()
+    #ifdef DISPLAY_CLASS
+            || ui_task.isButtonPressed()
+    #endif
+        ) {
+          ble_keep_awake_until = millis() + (POWERSAVING_FIRSTSLEEP_SECS * 1000UL);
+        }
+        was_ble_enabled = true;
+
+        bool can_disable_ble = !bluetooth_interface.isConnected()
+            && (int32_t)(millis() - ble_keep_awake_until) >= 0
+    #ifdef DISPLAY_CLASS
+            && !display.isOn()
+    #endif
+            ;
+
+        if (can_disable_ble) {
+          interface_manager.disableBluetooth();
+          was_ble_enabled = false;
+        } else if (!bluetooth_interface.isReadBusy() && !bluetooth_interface.isWriteBusy()) { // BLE is not busy
+          vTaskDelay(pdMS_TO_TICKS(10));                                                      // attempt to sleep
+        }
+      }
+
+      if (!bluetooth_interface.isEnabled()) {
+        was_ble_enabled = false;
+        board.sleep(30);
+        if (digitalRead(PIN_USER_BTN) == USER_BTN_PRESSED
+      #ifdef DISPLAY_CLASS
+            || display.isOn() || ui_task.isButtonPressed()
+      #endif
+        ) {
+          interface_manager.enableBluetooth();
+          ble_keep_awake_until = millis() + (POWERSAVING_FIRSTSLEEP_SECS * 1000UL);
+          was_ble_enabled = true;
+        }
+      }
+  #elif defined(BLE_PIN_CODE)
       if (!bluetooth_interface.isReadBusy() && !bluetooth_interface.isWriteBusy()) { // BLE is not busy
         vTaskDelay(pdMS_TO_TICKS(10));                                               // attempt to sleep
       }
@@ -330,6 +376,11 @@ void loop() {
   if (the_mesh.getNodePrefs()->powersaving_enabled != applied_powersaving) { // changed via CLI
     applied_powersaving = the_mesh.getNodePrefs()->powersaving_enabled;
     PowerSaving::applyCompanionPowerSaving(applied_powersaving);
+  #if defined(BLE_PIN_CODE)
+    if (!applied_powersaving && !bluetooth_interface.isEnabled()) {
+      interface_manager.enableBluetooth();
+    }
+  #endif
   }
 #endif
 
