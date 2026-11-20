@@ -392,6 +392,9 @@ void loop() {
     }
   #endif
   }
+
+  // no auto light sleep while connected to USB host
+  PowerSaving::updateUsbPowerLocks();
 #endif
 
 #ifdef ENABLE_WIFI_INTERFACE
